@@ -22,13 +22,14 @@ type Components struct {
 	blockchain                 *blockchain.Processor
 	etcdClient                 *etcddb.EtcdClient
 	etcdServer                 *etcddb.EtcdServer
-	atomicStorage			   escrow.AtomicStorage
+	atomicStorage              escrow.AtomicStorage
 	paymentChannelService      escrow.PaymentChannelService
 	escrowPaymentHandler       handler.PaymentHandler
 	grpcInterceptor            grpc.StreamServerInterceptor
 	paymentChannelStateService *escrow.PaymentChannelStateService
-	etcdLockerStorage		       *escrow.PrefixedAtomicStorage
+	etcdLockerStorage          *escrow.PrefixedAtomicStorage
 	providerControlService     *escrow.ProviderControlService
+	daemonHeartbeat            *metrics.DaemonHeartbeat
 }
 
 func InitComponents(cmd *cobra.Command) (components *Components) {
@@ -175,7 +176,10 @@ func (components *Components) PaymentChannelService() escrow.PaymentChannelServi
 		escrow.NewPaymentStorage(components.AtomicStorage()),
 		escrow.NewBlockchainChannelReader(components.Blockchain(), config.Vip(), components.ServiceMetaData()),
 		escrow.NewEtcdLocker(components.AtomicStorage()),
-		escrow.NewChannelPaymentValidator(components.Blockchain(), config.Vip(), components.ServiceMetaData()),
+		escrow.NewChannelPaymentValidator(components.Blockchain(), config.Vip(), components.ServiceMetaData()),func() ([32]byte, error) {
+			s := components.ServiceMetaData().GetDaemonGroupID()
+			return s, nil
+		},
 	)
 
 	return components.paymentChannelService
@@ -249,3 +253,11 @@ func (components *Components) ProviderControlService() (service *escrow.Provider
 	return components.providerControlService
 }
 
+func (components *Components) DaemonHeartBeat() (service *metrics.DaemonHeartbeat) {
+	if components.daemonHeartbeat != nil {
+		return components.daemonHeartbeat
+	}
+	metrics.SetDaemonGrpId(components.ServiceMetaData().GetDaemonGroupIDString())
+	components.daemonHeartbeat = &metrics.DaemonHeartbeat{DaemonID:metrics.GetDaemonID()}
+	return components.daemonHeartbeat
+}

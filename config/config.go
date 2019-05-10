@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/url"
+	"net"
 	"regexp"
 	"sort"
 	"strings"
@@ -28,18 +29,16 @@ const (
 	DaemonEndPoint                 = "daemon_end_point"
 	EthereumJsonRpcEndpointKey     = "ethereum_json_rpc_endpoint"
 	ExecutablePathKey              = "executable_path"
-	HdwalletIndexKey               = "hdwallet_index"
-	HdwalletMnemonicKey            = "hdwallet_mnemonic"
 	IpfsEndPoint                   = "ipfs_end_point"
 	IpfsTimeout                    = "ipfs_timeout"
 	LogKey                         = "log"
+	MaxMessageSizeInMB             = "max_message_size_in_mb"
 	MonitoringEnabled              = "monitoring_enabled"
 	MonitoringServiceEndpoint      = "monitoring_svc_end_point"
 	OrganizationId                 = "organization_id"
 	ServiceId                      = "service_id"
 	PassthroughEnabledKey          = "passthrough_enabled"
 	PassthroughEndpointKey         = "passthrough_endpoint"
-	PrivateKeyKey                  = "private_key"
 	RateLimitPerMinute             = "rate_limit_per_minute"
 	SSLCertPathKey                 = "ssl_cert"
 	SSLKeyPathKey                  = "ssl_key"
@@ -66,6 +65,7 @@ const (
 	"hdwallet_mnemonic": "",
 	"ipfs_end_point": "http://localhost:5002/", 
 	"ipfs_timeout" : 30,
+	"max_message_size_in_mb" : 4,
 	"monitoring_enabled": true,
 	"monitoring_svc_end_point": "https://n4rzw9pu76.execute-api.us-east-1.amazonaws.com/beta",
 	"organization_id": "ExampleOrganizationId", 
@@ -177,6 +177,29 @@ func Validate() error {
 	}
 
 	// Validate metrics URL and set state
+	passEndpoint := vip.GetString(PassthroughEndpointKey)
+	daemonEndpoint := vip.GetString(DaemonEndPoint)
+	var err error
+	err = ValidateEndpoints(daemonEndpoint, passEndpoint)
+	if err != nil {
+		return err
+	}
+
+	//Check if the Daemon is on the latest version or not
+	if message,err := CheckVersionOfDaemon(); err != nil {
+		//In case of any error on version check , just log it
+		log.Warning(err)
+	}else {
+		log.Info(message)
+	}
+
+
+	// the maximum that the server can receive to 2GB.
+	maxMessageSize:= vip.GetInt(MaxMessageSizeInMB)
+	if ( maxMessageSize <=0 || maxMessageSize > 2048)   {
+		return errors.New(" max_message_size_in_mb cannot be more than 2GB (i.e 2048 MB) and has to be a positive number")
+	}
+
 	return nil
 }
 
@@ -229,21 +252,14 @@ func SubWithDefault(config *viper.Viper, key string) *viper.Viper {
 	return sub
 }
 
-var hiddenKeys = map[string]bool{
-	strings.ToUpper(PrivateKeyKey):       true,
-	strings.ToUpper(HdwalletMnemonicKey): true,
-}
 
 func LogConfig() {
 	log.Info("Final configuration:")
 	keys := vip.AllKeys()
 	sort.Strings(keys)
 	for _, key := range keys {
-		if hiddenKeys[strings.ToUpper(key)] {
-			log.Infof("%v: ***", key)
-		} else {
-			log.Infof("%v: %v", key, vip.Get(key))
-		}
+		log.Infof("%v: %v", key, vip.Get(key))
+
 	}
 }
 
@@ -267,4 +283,26 @@ func IsValidUrl(urlToTest string) bool {
 func ValidateEmail(email string) bool {
 	Re := regexp.MustCompile(`^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,4}$`)
 	return Re.MatchString(email)
+}
+
+func ValidateEndpoints(daemonEndpoint string, passthroughEndpoint string) error {
+	passthroughURL, err := url.Parse(passthroughEndpoint)
+	if err != nil {
+		return errors.New("passthrough endpoint must be a valid URL")
+	}
+	daemonHost, daemonPort, err := net.SplitHostPort(daemonEndpoint)
+	if err != nil {
+		return errors.New("couldn't split host:post of daemon endpoint")
+	}
+
+	if daemonHost == passthroughURL.Hostname() && daemonPort == passthroughURL.Port() {
+		return errors.New("passthrough endpoint can't be the same as daemon endpoint!")
+	}
+
+	if ((daemonPort == passthroughURL.Port()) &&
+	    (daemonHost == "0.0.0.0") &&
+	    (passthroughURL.Hostname() == "127.0.0.1" || passthroughURL.Hostname() == "localhost"))	{
+		return errors.New("passthrough endpoint can't be the same as daemon endpoint!")
+	}
+	return nil
 }
