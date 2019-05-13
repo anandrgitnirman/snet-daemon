@@ -181,6 +181,7 @@ func (d *daemon) start() {
 		)
 		escrow.RegisterPaymentChannelStateServiceServer(d.grpcServer, d.components.PaymentChannelStateService())
 		escrow.RegisterProviderControlServiceServer(d.grpcServer,d.components.ProviderControlService())
+		config.RegisterConfigurationServiceServer(d.grpcServer,&config.Configuration_Service{})
 		grpc_health_v1.RegisterHealthServer(d.grpcServer,d.components.DaemonHeartBeat())
 		mux := cmux.New(d.lis)
 		// Use "prefix" matching to support "application/grpc*" e.g. application/grpc+proto or +json

@@ -30,6 +30,7 @@ type Components struct {
 	etcdLockerStorage          *escrow.PrefixedAtomicStorage
 	providerControlService     *escrow.ProviderControlService
 	daemonHeartbeat            *metrics.DaemonHeartbeat
+	configuration_service      *config.Configuration_Service
 }
 
 func InitComponents(cmd *cobra.Command) (components *Components) {
@@ -260,4 +261,14 @@ func (components *Components) DaemonHeartBeat() (service *metrics.DaemonHeartbea
 	metrics.SetDaemonGrpId(components.ServiceMetaData().GetDaemonGroupIDString())
 	components.daemonHeartbeat = &metrics.DaemonHeartbeat{DaemonID:metrics.GetDaemonID()}
 	return components.daemonHeartbeat
+}
+
+
+func (components *Components) CongfigurationService() (service *config.Configuration_Service) {
+	if components.configuration_service != nil {
+		return components.configuration_service
+	}
+
+	components.configuration_service = config.NewConfigurationService()//to do define this method correctly
+	return components.configuration_service
 }
