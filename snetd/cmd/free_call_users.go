@@ -6,6 +6,7 @@ import (
 	"github.com/singnet/snet-daemon/config"
 	"github.com/singnet/snet-daemon/escrow"
 	"github.com/spf13/cobra"
+	"strings"
 )
 
 var FreeCallUserUnLockCmd = &cobra.Command{
@@ -27,6 +28,15 @@ var FreeCallUserResetCmd = &cobra.Command{
 	},
 }
 
+var FreeCallUserAllSingnetUsersCommand = &cobra.Command{
+	Use:   "reset-all",
+	Short: "Reset the count on free calls used for all singulairty net users to zero",
+	Long:  "User can use 'snetd freecall reset-all -u {user-id}' command to reset the free call used of this User manually.",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return RunAndCleanup(cmd, args, newFreeCallUserAllSingnetUsersCommand)
+	},
+}
+
 //Free call user unlock command
 type freeCallUserUnLockCommand struct {
 	lockStorage *escrow.PrefixedAtomicStorage
@@ -40,6 +50,31 @@ type freeCallUserResetCountCommand struct {
 	userStorage *escrow.FreeCallUserStorage
 	userId      string
 	orgMetadata *blockchain.OrganizationMetaData
+}
+
+//Free call user unlock command
+type freeCallUserAllSingnetUsersCommand struct {
+	lockStorage     *escrow.PrefixedAtomicStorage
+	userStorage     *escrow.FreeCallUserStorage
+	userId          string
+	orgMetadata     *blockchain.OrganizationMetaData
+	freeCallService escrow.FreeCallUserService
+}
+
+// initializes and returns the new unlock user of free calls command object
+func newFreeCallUserAllSingnetUsersCommand(cmd *cobra.Command, args []string, pComponents *Components) (command Command, err error) {
+	userID, err := getUserId(cmd)
+	if err != nil {
+		return
+	}
+	command = &freeCallUserAllSingnetUsersCommand{
+		userStorage:     pComponents.FreeCallUserStorage(),
+		lockStorage:     pComponents.FreeCallLockerStorage(),
+		userId:          userID,
+		orgMetadata:     pComponents.OrganizationMetaData(),
+		freeCallService: pComponents.FreeCallUserService(),
+	}
+	return
 }
 
 // initializes and returns the new unlock user of free calls command object
@@ -90,6 +125,11 @@ func (command *freeCallUserResetCountCommand) Run() (err error) {
 	return command.resetUserForFreeCalls()
 }
 
+// command's run method
+func (command *freeCallUserAllSingnetUsersCommand) Run() (err error) {
+	return command.resetAllSingnetUserForFreeCalls()
+}
+
 // release the lock on the user with the given user id
 func (command *freeCallUserUnLockCommand) unlockFreeCallUser() (err error) {
 	key := &escrow.FreeCallUserKey{}
@@ -111,6 +151,28 @@ func (command *freeCallUserUnLockCommand) unlockFreeCallUser() (err error) {
 	}
 	fmt.Printf("Success: User %s unlocked\n", key.String())
 	return
+}
+
+func (command *freeCallUserAllSingnetUsersCommand) resetAllSingnetUserForFreeCalls() (err error) {
+	users, err := command.freeCallService.ListFreeCallUsers()
+	for _, user := range users {
+		if strings.Contains(user.UserId, "singularitynet") {
+			fmt.Printf("%v\n", user.String())
+			key := &escrow.FreeCallUserKey{}
+			key.UserId = user.UserId
+			key.OrganizationId = user.OrganizationId
+			key.ServiceId = user.ServiceId
+			key.GroupID = user.GroupID
+			user.FreeCallsMade = 0
+			err = command.userStorage.Put(key, &escrow.FreeCallUserData{UserId: key.UserId, FreeCallsMade: 0})
+			if err != nil {
+				fmt.Printf("Error: Unable to reset the user -%s\n", key.String())
+				continue
+			}
+			fmt.Printf("Success: User %s free calls have been reset \n", key.String())
+		}
+	}
+	return nil
 }
 
 // reset free locks counter for a given user id

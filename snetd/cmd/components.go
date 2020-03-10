@@ -324,8 +324,8 @@ func (components *Components) GrpcInterceptor() grpc.StreamServerInterceptor {
 		if ok, err := components.verifyAuthenticationSetUpForFreeCall(meteringUrl,
 			components.OrganizationMetaData().GetGroupIdString()); !ok {
 			log.Error(err)
-			log.WithError(err).Panic("Metering authentication failed.Please verify the configuration" +
-				" as part of service publication process")
+			/*	log.WithError(err).Panic("Metering authentication failed.Please verify the configuration" +
+				" as part of service publication process")*/
 		}
 
 		components.grpcInterceptor = grpc_middleware.ChainStreamServer(
